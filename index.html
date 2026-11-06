@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14332c">
+<title>MR12 Campo</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--teal:#2e7d6b;--dark:#14332c;--bg:#f2f4f3;--card:#fff;--line:#d8dfdc;--txt:#1d2a27;--mut:#66756f;--ok:#2e7d32;--nc:#c62828;--warn:#b26a00;--y:#fff3a6}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--dark);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{background:none;border:0;color:#fff;font-size:15px;padding:6px 8px}
+main{padding:12px 14px 120px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:#fff;color:var(--txt);border-radius:10px;padding:11px 14px;font-size:15px;font-weight:600}
+.btn.pri{background:var(--teal);border-color:var(--teal);color:#fff}.btn.full{width:100%}.btn.sm{padding:7px 10px;font-size:13px}.btn.del{color:var(--nc)}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+input,select,textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+textarea{min-height:64px}
+.muted{color:var(--mut);font-size:13px}.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:#e6efec;color:var(--teal);font-weight:600}
+.pill.pend{background:var(--y);color:#6b5400}.pill.env{background:#e3f1e4;color:var(--ok)}
+.banner{background:var(--y);border:1px solid #e8d36b;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.thumbs img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.foto{display:grid;grid-template-columns:96px 1fr;gap:10px;align-items:start}
+.foto img{width:96px;height:96px;object-fit:cover;border-radius:8px}
+.sit{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.sit button{padding:9px 0;border-radius:8px;border:1px solid var(--line);background:#fff;font-weight:700;font-size:13px}
+.sit button.on[data-v=C]{background:var(--ok);color:#fff;border-color:var(--ok)}.sit button.on[data-v=NC]{background:var(--nc);color:#fff;border-color:var(--nc)}
+.sit button.on[data-v=I]{background:var(--warn);color:#fff;border-color:var(--warn)}.sit button.on[data-v=NA]{background:#607d8b;color:#fff;border-color:#607d8b}
+.grp{font-weight:700;color:var(--teal);margin:18px 0 4px}
+.prog{height:8px;background:#dde5e2;border-radius:99px;overflow:hidden}.prog span{display:block;height:100%;background:var(--teal)}
+.fab{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;z-index:6}
+.fab .btn{flex:1}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:90%}
+.off{font-size:12px;padding:2px 8px;border-radius:99px;background:#5d4037}.on-l{background:#1b5e20}
+h2{font-size:18px;margin:6px 0}h3{font-size:16px;margin:4px 0}
+.list-item{display:flex;justify-content:space-between;gap:10px;align-items:center}
+</style>
+</head>
+<body>
+<header><button id="voltar" hidden aria-label="Voltar">‹ Voltar</button><h1 id="titulo">MR12 Campo</h1><span id="net" class="off">offline</span></header>
+<main id="app"></main>
+<div id="fab" class="fab" hidden></div>
+<script>
+'use strict';
+// ---------- Armazenamento local (IndexedDB) ----------
+const DB_NAME = 'mr12campo', DB_VER = 1;
+let db;
+function abrirDB() { return new Promise((res, rej) => { const r = indexedDB.open(DB_NAME, DB_VER); r.onupgradeneeded = () => { const d = r.result; ['cfg', 'trabalhos', 'fotos'].forEach(n => d.objectStoreNames.contains(n) || d.createObjectStore(n, { keyPath: 'id' })); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function tx(store, mode, fn) { return new Promise((res, rej) => { const t = db.transaction(store, mode), s = t.objectStore(store); let out; Promise.resolve(fn(s)).then(v => out = v); t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); }
+const req = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const dbGet = (st, id) => tx(st, 'readonly', s => req(s.get(id)));
+const dbAll = st => tx(st, 'readonly', s => req(s.getAll()));
+const dbPut = (st, v) => tx(st, 'readwrite', s => { s.put(v); });
+const dbDel = (st, id) => tx(st, 'readwrite', s => { s.delete(id); });
+
+// ---------- Utilidades ----------
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+const hoje = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const dataBR = s => s ? s.split('-').reverse().join('/') : '';
+const dataHora = t => new Date(t).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+function toast(m) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = m; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
+const SITS = { C: 'Conforme', NC: 'Não conforme', I: 'Insuficiente', NA: 'Não aplicável' };
+const urls = new Map();
+async function urlFoto(id) { if (urls.has(id)) return urls.get(id); const f = await dbGet('fotos', id); if (!f) return ''; const u = URL.createObjectURL(f.blob); urls.set(id, u); return u; }
+async function prepFoto(file) {
+  const bmp = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+  const max = 1280, k = Math.min(1, max / Math.max(bmp.naturalWidth, bmp.naturalHeight)), w = Math.round(bmp.naturalWidth * k), h = Math.round(bmp.naturalHeight * k);
+  const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(bmp, 0, 0, w, h); URL.revokeObjectURL(bmp.src);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.78));
+  const f = { id: 'f' + uid(), blob, w, h, em: Date.now() }; await dbPut('fotos', f); return { id: f.id, w, h, em: f.em };
+}
+
+// ---------- Estado ----------
+const S = { view: 'home', cur: null, cfg: { clientes: [], modelos: [], tecnico: '', atualizado: null } };
+async function carregarCfg() { const c = await dbGet('cfg', 'principal'); if (c) S.cfg = c; }
+const salvarCfg = () => dbPut('cfg', { ...S.cfg, id: 'principal' });
+let salvarTimer;
+function salvarTrabalho(t, ja) { t.atualizadoEm = Date.now(); clearTimeout(salvarTimer); if (ja) return dbPut('trabalhos', t); salvarTimer = setTimeout(() => dbPut('trabalhos', t), 400); }
+
+// ---------- Navegação ----------
+function ir(view, cur) { S.view = view; if (cur !== undefined) S.cur = cur; history.pushState({ view, cur: S.cur && S.cur.id }, ''); render(); scrollTo(0, 0); }
+window.addEventListener('popstate', async e => { const st = e.state || { view: 'home' }; S.view = st.view || 'home'; if (st.cur) S.cur = await dbGet('trabalhos', st.cur); render(); });
+$('#voltar').onclick = () => history.back();
+
+async function render() {
+  const app = $('#app'), fab = $('#fab'); fab.hidden = true; fab.innerHTML = '';
+  $('#voltar').hidden = S.view === 'home';
+  const V = { home: vHome, novo: vNovo, insp: vInsp, ck: vCk, cfg: vCfg, enviar: vEnviar }[S.view] || vHome;
+  app.innerHTML = await V(); posRender();
+}
+function setFab(html) { const f = $('#fab'); f.innerHTML = html; f.hidden = false; }
+
+// ---------- Telas ----------
+async function vHome() {
+  $('#titulo').textContent = 'MR12 Campo';
+  const ts = (await dbAll('trabalhos')).sort((a, b) => b.criadoEm - a.criadoEm), pend = ts.filter(t => !t.enviadoEm);
+  setFab(`<button class="btn pri" data-a="novo" data-t="insp">📷 Nova inspeção</button><button class="btn pri" data-a="novo" data-t="ck">☑️ Novo checklist</button>`);
+  return `${pend.length ? `<div class="banner"><b>${pend.length} trabalho(s) aguardando envio.</b> Não desinstale o app nem limpe os dados do navegador antes de enviar.</div>` : ''}
+  ${!S.cfg.clientes.length ? `<div class="card"><b>Primeiro uso:</b> carregue o arquivo de configuração (clientes e modelos de checklist) em <a href="#" data-a="cfg">Configurações</a>. Sem ele, você ainda pode digitar o nome do cliente.</div>` : ''}
+  <h2>Trabalhos</h2>
+  ${ts.length ? ts.map(t => { const n = t.tipo === 'insp' ? (t.itens || []).length + ' foto(s)' : nResp(t) + '/' + nItens(t) + ' itens'; return `<div class="card list-item" data-a="abrir" data-id="${t.id}"><div><div class="muted">${t.tipo === 'insp' ? 'Inspeção com IA' : 'Checklist'} · ${dataBR(t.data)}</div><b>${esc(t.cliente.empresa || 'Sem cliente')}</b><div class="muted">${n}</div></div><span class="pill ${t.enviadoEm ? 'env' : 'pend'}">${t.enviadoEm ? 'pacote gerado' : 'pendente'}</span></div>`; }).join('') : '<p class="muted">Nenhum trabalho ainda. Toque em “Nova inspeção” ou “Novo checklist”.</p>'}
+  <div class="card"><button class="btn full" data-a="cfg">⚙️ Configurações</button></div>
+  <p class="muted" style="text-align:center">Os dados ficam salvos neste celular até serem enviados e importados no sistema SST MR12.</p>`;
+}
+function selCliente(sel) {
+  return `<label>Cliente</label><select id="cliSel"><option value="">— digitar manualmente —</option>${S.cfg.clientes.map(c => `<option value="${esc(c.id)}" ${c.id === sel ? 'selected' : ''}>${esc(c.empresa)}${c.fantasia ? ' – ' + esc(c.fantasia) : ''}${c.cnpj ? ' (' + esc(c.cnpj) + ')' : ''}</option>`).join('')}</select>
+  <div id="cliManual"><label>Nome da empresa</label><input id="cliNome" placeholder="Razão social ou nome"><label>CNPJ (opcional)</label><input id="cliCnpj" inputmode="numeric"></div>`;
+}
+async function vNovo() {
+  const tipo = S.cur; $('#titulo').textContent = tipo === 'insp' ? 'Nova inspeção' : 'Novo checklist';
+  setFab(`<button class="btn pri" data-a="criar" data-t="${tipo}">Começar</button>`);
+  return `<div class="card">${selCliente('')}
+  <label>Data</label><input id="nData" type="date" value="${hoje()}">
+  <label>Local / setor (opcional)</label><input id="nLocal">
+  ${tipo === 'ck' ? `<label>Modelo de checklist</label>${S.cfg.modelos.length ? `<select id="nModelo">${S.cfg.modelos.map(m => `<option value="${esc(m.id)}">${esc(m.nome)}</option>`).join('')}</select>` : '<p class="banner">Nenhum modelo carregado. Carregue o arquivo de configuração em Configurações.</p>'}` : ''}</div>`;
+}
+async function criar(tipo) {
+  const cid = $('#cliSel').value, c = S.cfg.clientes.find(x => x.id === cid);
+  const cliente = c ? { ...c } : { id: '', empresa: $('#cliNome').value.trim(), cnpj: $('#cliCnpj').value.trim() };
+  if (!cliente.empresa) return toast('Informe o cliente.');
+  const t = { id: 't' + uid(), tipo, cliente, data: $('#nData').value || hoje(), local: $('#nLocal').value.trim(), tecnico: S.cfg.tecnico || '', criadoEm: Date.now(), obs: '' };
+  if (tipo === 'insp') t.itens = [];
+  else { const m = S.cfg.modelos.find(x => x.id === $('#nModelo')?.value); if (!m) return toast('Escolha um modelo de checklist.'); t.modelos = [{ id: m.id, nome: m.nome }]; t.grupos = JSON.parse(JSON.stringify(m.grupos)).map(g => ({ ...g, modeloId: m.id, modelo: m.nome, itens: (g.itens || []).filter(i => String(i.texto || '').trim()) })).filter(g => g.itens.length); t.respostas = {}; t.responsavel = { nome: cliente.representante || '', cargo: '' }; }
+  await salvarTrabalho(t, true); history.replaceState({ view: 'home' }, ''); ir(tipo, t);
+}
+async function vInsp() {
+  const t = S.cur; $('#titulo').textContent = t.cliente.empresa;
+  setFab(`<label class="btn pri" style="margin:0">📷 Tirar foto<input type="file" accept="image/*" capture="environment" id="camInsp" hidden></label><label class="btn" style="margin:0">🖼️ Galeria<input type="file" accept="image/*" multiple id="galInsp" hidden></label><button class="btn" data-a="enviar">📤 Enviar</button>`);
+  const fotos = await Promise.all(t.itens.map(async (it, i) => `<div class="card foto"><img src="${await urlFoto(it.foto)}" alt=""><div><div class="muted">Foto ${i + 1} · ${dataHora(it.em)}</div><label style="margin-top:4px">Comentário (o que a foto mostra, setor, observação)</label><textarea data-k="nota" data-id="${it.id}">${esc(it.nota)}</textarea><button class="btn sm del" data-a="rmFoto" data-id="${it.id}" style="margin-top:6px">Excluir foto</button></div></div>`));
+  return `${t.enviadoEm ? `<div class="banner">Pacote gerado em ${dataHora(t.enviadoEm)}. Você ainda pode editar e gerar de novo.</div>` : ''}
+  <div class="card"><div class="muted">Inspeção com IA · ${dataBR(t.data)}${t.local ? ' · ' + esc(t.local) : ''}</div><b>${esc(t.cliente.empresa)}</b>${t.cliente.cnpj ? `<div class="muted">${esc(t.cliente.cnpj)}</div>` : ''}
+  <label>Observações gerais (opcional)</label><textarea data-k="obs">${esc(t.obs)}</textarea></div>
+  <h3>${t.itens.length} foto(s)</h3>${fotos.join('') || '<p class="muted">Tire as fotos dos ambientes e situações. A leitura da IA será feita no sistema, depois do envio.</p>'}`;
+}
+const nItens = t => (t.grupos || []).reduce((s, g) => s + g.itens.length, 0);
+const nResp = t => Object.values(t.respostas || {}).filter(r => r.sit).length;
+async function vCk() {
+  const t = S.cur; $('#titulo').textContent = t.cliente.empresa;
+  setFab(`<button class="btn pri" data-a="enviar">📤 Enviar</button>`);
+  const tot = nItens(t), r = nResp(t), p = tot ? Math.round(100 * r / tot) : 0;
+  let html = `${t.enviadoEm ? `<div class="banner">Pacote gerado em ${dataHora(t.enviadoEm)}. Você ainda pode editar e gerar de novo.</div>` : ''}
+  <div class="card"><div class="muted">Checklist · ${esc(t.modelos.map(m => m.nome).join(', '))} · ${dataBR(t.data)}</div><b>${esc(t.cliente.empresa)}</b>
+  <div class="prog" style="margin-top:8px"><span style="width:${p}%"></span></div><div class="muted" id="ckProg">${r} de ${tot} respondidos</div>
+  <label>Responsável pela empresa (acompanhou)</label><input data-k="resp.nome" value="${esc(t.responsavel?.nome)}"><label>Cargo</label><input data-k="resp.cargo" value="${esc(t.responsavel?.cargo)}">
+  <label>Observações gerais</label><textarea data-k="obs">${esc(t.obs)}</textarea></div>`;
+  for (const g of t.grupos) {
+    html += `<div class="grp">${esc(g.codigo ? g.codigo + ' – ' : '')}${esc(g.nome)}</div>`;
+    for (const it of g.itens) {
+      const rr = (t.respostas[it.id] ||= { sit: '', obs: '', fotos: [] });
+      const th = (await Promise.all(rr.fotos.map(async f => `<img src="${await urlFoto(f.id)}" data-a="rmFotoCk" data-it="${it.id}" data-id="${f.id}" alt="">`))).join('');
+      html += `<div class="card" id="it_${it.id}"><div><b>${esc(it.codigo || '')}</b> ${esc(it.texto)}</div>
+      <div class="sit">${Object.keys(SITS).map(k => `<button class="${rr.sit === k ? 'on' : ''}" data-a="sit" data-it="${it.id}" data-v="${k}">${k}</button>`).join('')}</div>
+      <label>Observação</label><textarea data-k="ckobs" data-it="${it.id}" style="min-height:44px">${esc(rr.obs)}</textarea>
+      <div class="row" style="margin-top:6px"><label class="btn sm" style="margin:0;flex:0">📷 Foto<input type="file" accept="image/*" capture="environment" data-ckfoto="${it.id}" hidden></label><label class="btn sm" style="margin:0;flex:0">🖼️<input type="file" accept="image/*" multiple data-ckfoto="${it.id}" hidden></label></div>
+      ${th ? `<div class="thumbs">${th}</div><div class="muted">Toque numa foto para excluí-la.</div>` : ''}</div>`;
+    }
+  }
+  return html;
+}
+async function vCfg() {
+  $('#titulo').textContent = 'Configurações';
+  const est = navigator.storage?.estimate ? await navigator.storage.estimate() : null, pers = navigator.storage?.persisted ? await navigator.storage.persisted() : false;
+  return `<div class="card"><label>Nome do técnico</label><input id="cfgTec" value="${esc(S.cfg.tecnico)}"><button class="btn pri full" data-a="salvarTec" style="margin-top:10px">Salvar nome</button></div>
+  <div class="card"><h3>Clientes e modelos de checklist</h3><p class="muted">${S.cfg.clientes.length} cliente(s) e ${S.cfg.modelos.length} modelo(s) carregados${S.cfg.atualizado ? ' em ' + dataHora(S.cfg.atualizado) : ''}.</p>
+  <label class="btn full" style="margin:0">📂 Carregar arquivo de configuração<input type="file" accept=".json,application/json" id="cfgArq" hidden></label>
+  <p class="muted">O arquivo é gerado no sistema SST MR12 (ou enviado pelo escritório por WhatsApp/e-mail).</p></div>
+  <div class="card"><h3>Armazenamento</h3><p class="muted">${est ? `Usando ${(est.usage / 1048576).toFixed(1)} MB de ${(est.quota / 1048576 / 1024).toFixed(1)} GB disponíveis.` : ''} ${pers ? 'Armazenamento protegido contra limpeza automática ✔' : 'Instale o app na tela inicial para proteger os dados.'}</p></div>
+  <p class="muted" style="text-align:center">MR12 Campo · versão 1.0</p>`;
+}
+async function vEnviar() {
+  const t = S.cur; $('#titulo').textContent = 'Enviar';
+  const nf = t.tipo === 'insp' ? t.itens.length : Object.values(t.respostas).reduce((s, r) => s + r.fotos.length, 0);
+  return `<div class="card"><h3>${esc(t.cliente.empresa)}</h3><p class="muted">${t.tipo === 'insp' ? 'Inspeção com IA' : 'Checklist'} · ${dataBR(t.data)} · ${nf} foto(s)${t.tipo === 'ck' ? ` · ${nResp(t)} de ${nItens(t)} itens respondidos` : ''}</p>
+  <p>Com internet, gere o pacote e envie para o sistema:</p>
+  <button class="btn pri full" data-a="compartilhar">📤 Compartilhar pacote (WhatsApp, e-mail, Drive…)</button>
+  <button class="btn full" data-a="baixar" style="margin-top:8px">⬇️ Salvar pacote no celular</button>
+  <p class="muted" style="margin-top:12px">No sistema SST MR12, abra <b>App de campo → Importar pacote</b> e escolha o arquivo. O sistema cria a ${t.tipo === 'insp' ? 'inspeção, faz a leitura das fotos pela IA' : 'checklist'} e libera o PDF.</p></div>
+  <div class="card"><p class="muted">Depois de confirmar que foi importado no sistema, você pode apagar este trabalho do celular para liberar espaço.</p><button class="btn full del" data-a="apagar">🗑️ Apagar do celular</button></div>`;
+}
+
+// ---------- Pacote ----------
+const b64 = blob => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
+async function montarPacote(t) {
+  const ids = t.tipo === 'insp' ? t.itens.map(i => i.foto) : Object.values(t.respostas).flatMap(r => r.fotos.map(f => f.id));
+  const fotos = {}; for (const id of ids) { const f = await dbGet('fotos', id); if (f) fotos[id] = { data: await b64(f.blob), w: f.w, h: f.h, em: f.em }; }
+  const { enviadoEm, ...dados } = t;
+  const pac = { formato: 'mr12-campo', versao: 1, geradoEm: Date.now(), ...dados, fotos };
+  const nome = `MR12campo_${t.tipo === 'insp' ? 'inspecao' : 'checklist'}_${(t.cliente.empresa || 'cliente').normalize('NFD').replace(/[^\w]+/g, '_').slice(0, 30)}_${t.data}.json`;
+  return new File([JSON.stringify(pac)], nome, { type: 'application/json' });
+}
+async function marcarEnviado(t) { t.enviadoEm = Date.now(); await salvarTrabalho(t, true); }
+
+// ---------- Ações ----------
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a; if (b.tagName === 'A') e.preventDefault();
+  const t = S.cur;
+  if (a === 'novo') return ir('novo', b.dataset.t);
+  if (a === 'criar') return criar(b.dataset.t);
+  if (a === 'cfg') return ir('cfg');
+  if (a === 'abrir') { const x = await dbGet('trabalhos', b.dataset.id); return ir(x.tipo, x); }
+  if (a === 'enviar') { await salvarTrabalho(t, true); return ir('enviar'); }
+  if (a === 'salvarTec') { S.cfg.tecnico = $('#cfgTec').value.trim(); await salvarCfg(); return toast('Nome salvo.'); }
+  if (a === 'rmFoto') { if (!confirm('Excluir esta foto?')) return; const it = t.itens.find(i => i.id === b.dataset.id); t.itens = t.itens.filter(i => i.id !== b.dataset.id); if (it) await dbDel('fotos', it.foto); await salvarTrabalho(t, true); return render(); }
+  if (a === 'rmFotoCk') { if (!confirm('Excluir esta foto?')) return; const r = t.respostas[b.dataset.it]; r.fotos = r.fotos.filter(f => f.id !== b.dataset.id); await dbDel('fotos', b.dataset.id); await salvarTrabalho(t, true); return render(); }
+  if (a === 'sit') { const r = t.respostas[b.dataset.it]; r.sit = r.sit === b.dataset.v ? '' : b.dataset.v; salvarTrabalho(t); b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.v === r.sit)); const tot = nItens(t), n = nResp(t); $('#ckProg').textContent = `${n} de ${tot} respondidos`; document.querySelector('.prog span').style.width = (tot ? Math.round(100 * n / tot) : 0) + '%'; return; }
+  if (a === 'compartilhar' || a === 'baixar') {
+    b.disabled = true; const old = b.textContent; b.textContent = 'Gerando pacote…';
+    try {
+      const f = await montarPacote(t);
+      if (a === 'compartilhar' && navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: f.name, text: 'Pacote do app de campo MR12' }); }
+      else { const u = URL.createObjectURL(f), l = document.createElement('a'); l.href = u; l.download = f.name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); if (a === 'compartilhar') toast('Compartilhamento indisponível: o arquivo foi salvo em Downloads.'); }
+      await marcarEnviado(t); toast('Pacote gerado. Agora importe no sistema.');
+    } catch (err) { if (err && err.name !== 'AbortError') toast('Não foi possível gerar o pacote: ' + (err.message || err)); }
+    finally { b.disabled = false; b.textContent = old; }
+    return;
+  }
+  if (a === 'apagar') {
+    if (!t.enviadoEm && !confirm('Este trabalho ainda não foi enviado. Apagar mesmo assim?')) return;
+    if (t.enviadoEm && !confirm('Apagar do celular? Confirme que já foi importado no sistema.')) return;
+    const ids = t.tipo === 'insp' ? t.itens.map(i => i.foto) : Object.values(t.respostas).flatMap(r => r.fotos.map(f => f.id));
+    for (const id of ids) await dbDel('fotos', id); await dbDel('trabalhos', t.id); S.cur = null; toast('Trabalho apagado.'); S.view = 'home'; history.replaceState({ view: 'home' }, ''); render(); return;
+  }
+});
+document.addEventListener('input', e => {
+  const el = e.target, t = S.cur, k = el.dataset.k; if (!k || !t) return;
+  if (k === 'obs') t.obs = el.value;
+  else if (k === 'nota') { const it = t.itens.find(i => i.id === el.dataset.id); if (it) it.nota = el.value; }
+  else if (k === 'ckobs') t.respostas[el.dataset.it].obs = el.value;
+  else if (k === 'resp.nome') (t.responsavel ||= {}).nome = el.value;
+  else if (k === 'resp.cargo') (t.responsavel ||= {}).cargo = el.value;
+  salvarTrabalho(t);
+});
+document.addEventListener('change', async e => {
+  const el = e.target, t = S.cur;
+  if (el.id === 'cliSel') { $('#cliManual').hidden = !!el.value; return; }
+  if (el.id === 'camInsp' || el.id === 'galInsp') {
+    const fs = [...el.files]; el.value = ''; if (!fs.length) return; toast('Salvando foto(s)…');
+    for (const f of fs) { try { const r = await prepFoto(f); t.itens.push({ id: 'i' + uid(), foto: r.id, w: r.w, h: r.h, em: r.em, nota: '' }); } catch (err) { toast('Não foi possível ler uma das fotos.'); } }
+    await salvarTrabalho(t, true); render(); setTimeout(() => scrollTo(0, document.body.scrollHeight), 50); return;
+  }
+  if (el.dataset.ckfoto) {
+    const id = el.dataset.ckfoto, fs = [...el.files]; el.value = ''; const r = t.respostas[id];
+    for (const f of fs) { try { r.fotos.push(await prepFoto(f)); } catch (err) { toast('Não foi possível ler uma das fotos.'); } }
+    await salvarTrabalho(t, true); const y = scrollY; await render(); scrollTo(0, y); return;
+  }
+  if (el.id === 'cfgArq') {
+    const f = el.files[0]; el.value = ''; if (!f) return;
+    try { const j = JSON.parse(await f.text()); if (j.formato !== 'mr12-campo-config') throw new Error('arquivo não é de configuração do app de campo');
+      S.cfg.clientes = (j.clientes || []).filter(c => c.empresa).sort((a, b) => a.empresa.localeCompare(b.empresa)); S.cfg.modelos = (j.modelos || []).filter(m => (m.grupos || []).some(g => (g.itens || []).some(i => String(i.texto || '').trim()))); S.cfg.atualizado = Date.now(); await salvarCfg(); toast(`Carregado: ${S.cfg.clientes.length} clientes e ${S.cfg.modelos.length} modelos.`); render();
+    } catch (err) { toast('Arquivo inválido: ' + err.message); }
+  }
+});
+function posRender() { const s = $('#cliSel'); if (s) $('#cliManual').hidden = !!s.value; }
+
+// ---------- Rede / instalação ----------
+function net() { const n = $('#net'); n.textContent = navigator.onLine ? 'online' : 'offline'; n.className = navigator.onLine ? 'off on-l' : 'off'; }
+addEventListener('online', net); addEventListener('offline', net);
+(async () => {
+  net(); db = await abrirDB(); await carregarCfg();
+  try { if (navigator.storage?.persist) await navigator.storage.persist(); } catch (e) { }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
+  history.replaceState({ view: 'home' }, ''); render();
+})();
+</script>
+</body>
+</html>
