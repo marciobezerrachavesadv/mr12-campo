@@ -208,10 +208,11 @@ async function vEnviar() {
   const t = S.cur; $('#titulo').textContent = 'Enviar';
   const nf = t.tipo === 'insp' ? t.itens.length : Object.values(t.respostas).reduce((s, r) => s + r.fotos.length, 0);
   return `<div class="card"><h3>${esc(t.cliente.empresa)}</h3><p class="muted">${t.tipo === 'insp' ? 'Inspeção com IA' : 'Checklist'} · ${dataBR(t.data)} · ${nf} foto(s)${t.tipo === 'ck' ? ` · ${nResp(t)} de ${nItens(t)} itens respondidos` : ''}</p>
-  <p>Com internet, gere o pacote e envie para o sistema:</p>
-  <button class="btn pri full" data-a="compartilhar">📤 Compartilhar pacote (WhatsApp, e-mail, Drive…)</button>
-  <button class="btn full" data-a="baixar" style="margin-top:8px">⬇️ Salvar pacote no celular</button>
-  <p class="muted" style="margin-top:12px">No sistema SST MR12, abra <b>App de campo → Importar pacote</b> e escolha o arquivo. O sistema cria a ${t.tipo === 'insp' ? 'inspeção, faz a leitura das fotos pela IA' : 'checklist'} e libera o PDF.</p></div>
+  <p>Com internet, envie o pacote para o sistema:</p>
+  <button class="btn pri full" data-a="compartilhar">📤 Enviar para o sistema (Google Drive)</button>
+  <ol class="muted" style="margin:10px 0 0 18px;padding:0;line-height:1.5"><li>Toque no botão acima e escolha <b>Drive</b> (Salvar no Drive).</li><li>Confira se a pasta é <b>MR12 Campo</b> (na primeira vez, toque em Pasta e escolha MR12 Campo; depois o Drive lembra).</li><li>Toque em <b>Salvar</b>. Pronto: no escritório, o sistema busca os pacotes novos dessa pasta.</li></ol>
+  <button class="btn full" data-a="baixar" style="margin-top:12px">⬇️ Salvar pacote no celular (alternativa)</button>
+  <p class="muted" style="margin-top:12px">O pacote fica guardado no Google Drive como backup. Se preferir, ainda dá para enviar o arquivo por WhatsApp/e-mail e importar manualmente em <b>App de campo → Importar pacote</b>.</p></div>
   <div class="card"><p class="muted">Depois de confirmar que foi importado no sistema, você pode apagar este trabalho do celular para liberar espaço.</p><button class="btn full del" data-a="apagar">🗑️ Apagar do celular</button></div>`;
 }
 
@@ -245,9 +246,9 @@ document.addEventListener('click', async e => {
     b.disabled = true; const old = b.textContent; b.textContent = 'Gerando pacote…';
     try {
       const f = await montarPacote(t);
-      if (a === 'compartilhar' && navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: f.name, text: 'Pacote do app de campo MR12' }); }
+      if (a === 'compartilhar' && navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: f.name }); }
       else { const u = URL.createObjectURL(f), l = document.createElement('a'); l.href = u; l.download = f.name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); if (a === 'compartilhar') toast('Compartilhamento indisponível: o arquivo foi salvo em Downloads.'); }
-      await marcarEnviado(t); toast('Pacote gerado. Agora importe no sistema.');
+      await marcarEnviado(t); toast(a === 'compartilhar' ? 'Pacote enviado. Confira se foi salvo na pasta MR12 Campo do Drive.' : 'Pacote salvo no celular.');
     } catch (err) { if (err && err.name !== 'AbortError') toast('Não foi possível gerar o pacote: ' + (err.message || err)); }
     finally { b.disabled = false; b.textContent = old; }
     return;
