@@ -128,7 +128,7 @@ async function criar(tipo) {
   const cliente = c ? { ...c } : { id: '', empresa: $('#cliNome').value.trim(), cnpj: $('#cliCnpj').value.trim() };
   if (!cliente.empresa) return toast('Informe o cliente.');
   const t = { id: 't' + uid(), tipo, cliente, data: $('#nData').value || hoje(), local: $('#nLocal').value.trim(), tecnico: S.cfg.tecnico || '', criadoEm: Date.now(), obs: '' };
-  if (tipo === 'insp') t.itens = [];
+  if (tipo === 'insp') { t.itens = []; t.responsavel = { nome: cliente.representante || '', cargo: '' }; }
   else { const m = S.cfg.modelos.find(x => x.id === $('#nModelo')?.value); if (!m) return toast('Escolha um modelo de checklist.'); t.modelos = [{ id: m.id, nome: m.nome }]; t.grupos = JSON.parse(JSON.stringify(m.grupos)).map(g => ({ ...g, modeloId: m.id, modelo: m.nome, itens: (g.itens || []).filter(i => String(i.texto || '').trim()) })).filter(g => g.itens.length); t.respostas = {}; t.responsavel = { nome: cliente.representante || '', cargo: '' }; }
   await salvarTrabalho(t, true); history.replaceState({ view: 'home' }, ''); ir(tipo, t);
 }
@@ -139,7 +139,9 @@ async function vInsp() {
   return `${t.enviadoEm ? `<div class="banner">Pacote gerado em ${dataHora(t.enviadoEm)}. Você ainda pode editar e gerar de novo.</div>` : ''}
   <div class="card"><div class="muted">Inspeção com IA · ${dataBR(t.data)}${t.local ? ' · ' + esc(t.local) : ''}</div><b>${esc(t.cliente.empresa)}</b>${t.cliente.cnpj ? `<div class="muted">${esc(t.cliente.cnpj)}</div>` : ''}
   <label>Observações gerais (opcional)</label><textarea data-k="obs">${esc(t.obs)}</textarea></div>
-  <h3>${t.itens.length} foto(s)</h3>${fotos.join('') || '<p class="muted">Tire as fotos dos ambientes e situações. A leitura da IA será feita no sistema, depois do envio.</p>'}`;
+  <h3>${t.itens.length} foto(s)</h3>${fotos.join('') || '<p class="muted">Tire as fotos dos ambientes e situações. A leitura da IA será feita no sistema, depois do envio.</p>'}
+  <div class="card"><label>Responsável pela empresa (acompanhou)</label><input data-k="resp.nome" value="${esc(t.responsavel?.nome || t.cliente.representante || '')}"><label>Cargo</label><input data-k="resp.cargo" value="${esc(t.responsavel?.cargo)}"></div>
+  ${assHTML(t)}`;
 }
 const nItens = t => (t.grupos || []).reduce((s, g) => s + g.itens.length, 0);
 const nResp = t => Object.values(t.respostas || {}).filter(r => r.sit).length;
@@ -164,7 +166,33 @@ async function vCk() {
       ${th ? `<div class="thumbs">${th}</div><div class="muted">Toque numa foto para excluí-la.</div>` : ''}</div>`;
     }
   }
+  html += assHTML(t);
   return html;
+}
+function assHTML(t) {
+  return `<div class="grp">Assinatura do responsável pela empresa</div>
+  <div class="card"><div class="muted">${t.responsavel?.nome ? esc(t.responsavel.nome) + (t.responsavel.cargo ? ' – ' + esc(t.responsavel.cargo) : '') : 'Informe o nome do responsável pela empresa.'}</div>
+  <div class="muted" style="margin-top:4px">Peça ao responsável para assinar com o dedo no quadro abaixo.</div>
+  <canvas id="assResp" aria-label="Quadro de assinatura do responsável" style="display:block;width:100%;height:190px;border:1.5px dashed #9aa;border-radius:10px;background:#fff;touch-action:none;margin-top:8px"></canvas>
+  <div class="row" style="margin-top:8px;align-items:center;gap:10px"><button class="btn sm" data-a="limparAss" style="flex:0">Limpar</button><span class="muted" id="assInfo">${t.assResp?.src ? 'Assinado em ' + dataHora(t.assResp.em) : 'Ainda não assinado'}</span></div></div>`;
+}
+function initAss() {
+  const c = $('#assResp'), t = S.cur; if (!c || !t) return;
+  const r = c.getBoundingClientRect(), dpr = Math.max(1, window.devicePixelRatio || 1);
+  c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+  const g = c.getContext('2d'); g.scale(dpr, dpr); g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#111'; g.fillStyle = '#111';
+  if (t.assResp?.src) { const im = new Image(); im.onload = () => g.drawImage(im, 0, 0, r.width, r.height); im.src = t.assResp.src; }
+  let des = false, last = null;
+  const pt = e => { const b = c.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  c.onpointerdown = e => { e.preventDefault(); des = true; try { c.setPointerCapture(e.pointerId); } catch (x) { } last = pt(e); g.beginPath(); g.arc(last[0], last[1], 1.2, 0, 7); g.fill(); };
+  c.onpointermove = e => { if (!des) return; e.preventDefault(); const p = pt(e); g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); last = p; };
+  const fim = async () => {
+    if (!des) return; des = false;
+    const o = document.createElement('canvas'); o.width = 600; o.height = Math.round(600 * c.height / c.width); o.getContext('2d').drawImage(c, 0, 0, o.width, o.height);
+    t.assResp = { src: o.toDataURL('image/png'), w: o.width, h: o.height, em: Date.now() }; await salvarTrabalho(t, true);
+    const i = $('#assInfo'); if (i) i.textContent = 'Assinado em ' + dataHora(t.assResp.em);
+  };
+  c.onpointerup = fim; c.onpointercancel = fim;
 }
 async function vCfg() {
   $('#titulo').textContent = 'Configurações';
@@ -211,6 +239,7 @@ document.addEventListener('click', async e => {
   if (a === 'salvarTec') { S.cfg.tecnico = $('#cfgTec').value.trim(); await salvarCfg(); return toast('Nome salvo.'); }
   if (a === 'rmFoto') { if (!confirm('Excluir esta foto?')) return; const it = t.itens.find(i => i.id === b.dataset.id); t.itens = t.itens.filter(i => i.id !== b.dataset.id); if (it) await dbDel('fotos', it.foto); await salvarTrabalho(t, true); return render(); }
   if (a === 'rmFotoCk') { if (!confirm('Excluir esta foto?')) return; const r = t.respostas[b.dataset.it]; r.fotos = r.fotos.filter(f => f.id !== b.dataset.id); await dbDel('fotos', b.dataset.id); await salvarTrabalho(t, true); return render(); }
+  if (a === 'limparAss') { if (t.assResp?.src && !confirm('Apagar a assinatura e coletar de novo?')) return; t.assResp = null; await salvarTrabalho(t, true); const y = scrollY; await render(); scrollTo(0, y); return; }
   if (a === 'sit') { const r = t.respostas[b.dataset.it]; r.sit = r.sit === b.dataset.v ? '' : b.dataset.v; salvarTrabalho(t); b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.v === r.sit)); const tot = nItens(t), n = nResp(t); $('#ckProg').textContent = `${n} de ${tot} respondidos`; document.querySelector('.prog span').style.width = (tot ? Math.round(100 * n / tot) : 0) + '%'; return; }
   if (a === 'compartilhar' || a === 'baixar') {
     b.disabled = true; const old = b.textContent; b.textContent = 'Gerando pacote…';
@@ -259,7 +288,7 @@ document.addEventListener('change', async e => {
     } catch (err) { toast('Arquivo inválido: ' + err.message); }
   }
 });
-function posRender() { const s = $('#cliSel'); if (s) $('#cliManual').hidden = !!s.value; }
+function posRender() { const s = $('#cliSel'); if (s) $('#cliManual').hidden = !!s.value; if (S.view === 'ck' || S.view === 'insp') initAss(); }
 
 // ---------- Rede / instalação ----------
 function net() { const n = $('#net'); n.textContent = navigator.onLine ? 'online' : 'offline'; n.className = navigator.onLine ? 'off on-l' : 'off'; }
