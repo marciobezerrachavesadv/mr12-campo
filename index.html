@@ -202,17 +202,24 @@ async function vCfg() {
   <label class="btn full" style="margin:0">📂 Carregar arquivo de configuração<input type="file" accept=".json,application/json" id="cfgArq" hidden></label>
   <p class="muted">O arquivo é gerado no sistema SST MR12 (ou enviado pelo escritório por WhatsApp/e-mail).</p></div>
   <div class="card"><h3>Armazenamento</h3><p class="muted">${est ? `Usando ${(est.usage / 1048576).toFixed(1)} MB de ${(est.quota / 1048576 / 1024).toFixed(1)} GB disponíveis.` : ''} ${pers ? 'Armazenamento protegido contra limpeza automática ✔' : 'Instale o app na tela inicial para proteger os dados.'}</p></div>
-  <p class="muted" style="text-align:center">MR12 Campo · versão 1.0</p>`;
+  <p class="muted" style="text-align:center">MR12 Campo · versão 1.1</p>`;
 }
 async function vEnviar() {
   const t = S.cur; $('#titulo').textContent = 'Enviar';
   const nf = t.tipo === 'insp' ? t.itens.length : Object.values(t.respostas).reduce((s, r) => s + r.fotos.length, 0);
   return `<div class="card"><h3>${esc(t.cliente.empresa)}</h3><p class="muted">${t.tipo === 'insp' ? 'Inspeção com IA' : 'Checklist'} · ${dataBR(t.data)} · ${nf} foto(s)${t.tipo === 'ck' ? ` · ${nResp(t)} de ${nItens(t)} itens respondidos` : ''}</p>
-  <p>Com internet, envie o pacote para o sistema:</p>
-  <button class="btn pri full" data-a="compartilhar" id="btnEnviar" ${S.pac ? '' : 'disabled'}>${S.pac ? '📤 Enviar para o sistema (Google Drive)' : '⏳ Preparando o pacote…'}</button>
-  <ol class="muted" style="margin:10px 0 0 18px;padding:0;line-height:1.5"><li>Toque no botão acima e escolha <b>Drive</b> (Salvar no Drive).</li><li>Confira se a pasta é <b>MR12 Campo</b> (na primeira vez, toque em Pasta e escolha MR12 Campo; depois o Drive lembra).</li><li>Toque em <b>Salvar</b>. Pronto: no escritório, o sistema busca os pacotes novos dessa pasta.</li></ol>
-  <button class="btn full" data-a="baixar" style="margin-top:12px">⬇️ Salvar pacote no celular (alternativa)</button>
-  <p class="muted" style="margin-top:12px">O pacote fica guardado no Google Drive como backup. Se preferir, ainda dá para enviar o arquivo por WhatsApp/e-mail e importar manualmente em <b>App de campo → Importar pacote</b>.</p></div>
+  ${S.cfg.envio && S.cfg.envio.url ? `<p>Com internet, toque no botão: o pacote chega sozinho no sistema.</p>
+  <button class="btn pri full" data-a="enviarDireto" id="btnEnviar" ${S.pac ? '' : 'disabled'}>${S.pac ? '📤 Enviar para o sistema' : '⏳ Preparando o pacote…'}</button>
+  ${t.enviadoEm ? `<p class="muted" style="margin-top:8px">✅ Já enviado em ${new Date(t.enviadoEm).toLocaleString('pt-BR')}. Se tocar de novo, o sistema ignora a repetição.</p>` : ''}
+  <details style="margin-top:12px"><summary class="muted">Sem internet ou deu erro? Outras formas</summary>
+  <button class="btn full" data-a="compartilhar" style="margin-top:8px">📎 Enviar pelo Google Drive (compartilhar)</button>
+  <button class="btn full" data-a="baixar" style="margin-top:8px">⬇️ Salvar pacote no celular</button>
+  <p class="muted" style="margin-top:8px">Também dá para mandar o arquivo por WhatsApp/e-mail e importar em <b>App de campo → Importar pacote</b>.</p></details>`
+  : `<div class="banner">O envio automático ainda não está ativado neste celular. Em <b>Configurações</b>, carregue o arquivo de configuração novo gerado pelo sistema (App de campo → Gerar arquivo de configuração).</div>
+  <button class="btn pri full" data-a="compartilhar" id="btnEnviar" ${S.pac ? '' : 'disabled'}>${S.pac ? '📤 Enviar pelo Google Drive (compartilhar)' : '⏳ Preparando o pacote…'}</button>
+  <ol class="muted" style="margin:10px 0 0 18px;padding:0;line-height:1.5"><li>Toque no botão acima e escolha <b>Drive</b> (Salvar no Drive).</li><li>Confira se a pasta é <b>MR12 Campo</b>.</li><li>Toque em <b>Salvar</b>.</li></ol>
+  <button class="btn full" data-a="baixar" style="margin-top:12px">⬇️ Salvar pacote no celular (alternativa)</button>`}
+  </div>
   <div class="card"><p class="muted">Depois de confirmar que foi importado no sistema, você pode apagar este trabalho do celular para liberar espaço.</p><button class="btn full del" data-a="apagar">🗑️ Apagar do celular</button></div>`;
 }
 
@@ -227,6 +234,17 @@ async function montarPacote(t) {
   return new File([JSON.stringify(pac)], nome, { type: 'application/json' });
 }
 function baixarArquivo(f) { const u = URL.createObjectURL(f), l = document.createElement('a'); l.href = u; l.download = f.name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+async function enviarPacote(f) {
+  const e = S.cfg.envio; if (!e || !e.url) throw new Error('envio não configurado');
+  if (navigator.onLine === false) throw new Error('sem internet');
+  const ac = new AbortController(), to = setTimeout(() => ac.abort(), 180000);
+  try {
+    const r = await fetch(e.url + '?t=' + encodeURIComponent(e.chave || '') + '&nome=' + encodeURIComponent(f.name), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: await f.text(), signal: ac.signal });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.erro === 'chave' ? 'chave de envio inválida (carregue a configuração nova)' : (j.erro || 'resposta inesperada'));
+    return j;
+  } finally { clearTimeout(to); }
+}
 async function marcarEnviado(t) { t.enviadoEm = Date.now(); await salvarTrabalho(t, true); }
 
 // ---------- Ações ----------
@@ -243,6 +261,13 @@ document.addEventListener('click', async e => {
   if (a === 'rmFotoCk') { if (!confirm('Excluir esta foto?')) return; const r = t.respostas[b.dataset.it]; r.fotos = r.fotos.filter(f => f.id !== b.dataset.id); await dbDel('fotos', b.dataset.id); await salvarTrabalho(t, true); return render(); }
   if (a === 'limparAss') { if (t.assResp?.src && !confirm('Apagar a assinatura e coletar de novo?')) return; t.assResp = null; await salvarTrabalho(t, true); const y = scrollY; await render(); scrollTo(0, y); return; }
   if (a === 'sit') { const r = t.respostas[b.dataset.it]; r.sit = r.sit === b.dataset.v ? '' : b.dataset.v; salvarTrabalho(t); b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.v === r.sit)); const tot = nItens(t), n = nResp(t); $('#ckProg').textContent = `${n} de ${tot} respondidos`; document.querySelector('.prog span').style.width = (tot ? Math.round(100 * n / tot) : 0) + '%'; return; }
+  if (a === 'enviarDireto') {
+    const f = S.pac; if (!f) return toast('Aguarde: preparando o pacote…');
+    if (b.dataset.busy) return; b.dataset.busy = '1'; const rot = b.textContent; b.disabled = true; b.textContent = '⏳ Enviando…';
+    try { const j = await enviarPacote(f); await marcarEnviado(t); toast(j.duplicado ? 'Este pacote já estava no sistema.' : 'Enviado! O pacote já está a caminho do sistema.'); await render(); }
+    catch (err) { toast('Não foi possível enviar agora (' + (err && err.name === 'AbortError' ? 'demorou demais' : err.message) + '). Tente de novo com sinal melhor, ou use "Outras formas".'); b.disabled = false; b.textContent = rot; delete b.dataset.busy; }
+    return;
+  }
   if (a === 'compartilhar') {
     const f = S.pac; if (!f) return toast('Aguarde: preparando o pacote…');
     // o compartilhamento precisa acontecer logo após o toque (regra do Android): o pacote já está pronto
@@ -288,7 +313,7 @@ document.addEventListener('change', async e => {
   if (el.id === 'cfgArq') {
     const f = el.files[0]; el.value = ''; if (!f) return;
     try { const j = JSON.parse(await f.text()); if (j.formato !== 'mr12-campo-config') throw new Error('arquivo não é de configuração do app de campo');
-      S.cfg.clientes = (j.clientes || []).filter(c => c.empresa).sort((a, b) => a.empresa.localeCompare(b.empresa)); S.cfg.modelos = (j.modelos || []).filter(m => (m.grupos || []).some(g => (g.itens || []).some(i => String(i.texto || '').trim()))); S.cfg.atualizado = Date.now(); await salvarCfg(); toast(`Carregado: ${S.cfg.clientes.length} clientes e ${S.cfg.modelos.length} modelos.`); render();
+      S.cfg.clientes = (j.clientes || []).filter(c => c.empresa).sort((a, b) => a.empresa.localeCompare(b.empresa)); S.cfg.modelos = (j.modelos || []).filter(m => (m.grupos || []).some(g => (g.itens || []).some(i => String(i.texto || '').trim()))); if (j.envio && j.envio.url && /^https:\/\/script\.google\.com\//.test(j.envio.url)) S.cfg.envio = { url: j.envio.url, chave: String(j.envio.chave || '') }; S.cfg.atualizado = Date.now(); await salvarCfg(); toast(`Carregado: ${S.cfg.clientes.length} clientes e ${S.cfg.modelos.length} modelos.` + (S.cfg.envio ? ' Envio automático ativado.' : '')); render();
     } catch (err) { toast('Arquivo inválido: ' + err.message); }
   }
 });
